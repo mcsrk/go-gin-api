@@ -1,63 +1,44 @@
 package main
 
 import (
-	"net/http"
+	"fmt"
+	"log"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-gin-api/pkg/infrastructure/datastore"
+	"github.com/go-gin-api/pkg/infrastructure/router"
+	"github.com/go-gin-api/pkg/registry"
+	_ "github.com/jinzhu/gorm/dialects/mysql"
+	"github.com/labstack/echo"
+	"github.com/spf13/viper"
 )
 
-type album struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
-	Year   int    `json:"year"`
-}
-
-var albums = []album{
-	{ID: "1", Title: "Familia", Artist: "Camila Cabello", Year: 2022},
-	{ID: "2", Title: "The Eminem Show", Artist: "Eminem", Year: 2000},
-	{ID: "3", Title: "QFF", Artist: "Skrillex", Year: 2023},
-}
-
-func getAlbums(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, albums)
-}
-func postAlbum(c *gin.Context) {
-	var newAlbum album
-
-	if err := c.BindJSON(&newAlbum); err != nil {
-		return
-	}
-
-	albums = append(albums, newAlbum)
-
-	c.IndentedJSON(http.StatusCreated, albums)
-}
-
-func getAlbumById(c *gin.Context) {
-	id := c.Param("id")
-
-	for _, a := range albums {
-		if a.ID == id {
-			c.IndentedJSON(http.StatusOK, a)
-			return
-		}
-	}
-	c.IndentedJSON(http.StatusNotFound, gin.H{"message": "Album no encontrado"})
-}
-
 func main() {
-	// Declare router & setup routes
-	router := gin.Default()
 
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "Hello, world!",
-		})
-	})
-	router.GET("/albums", getAlbums)
-	router.GET("/albums/:id", getAlbumById)
-	router.POST("/albums", postAlbum)
+	// Load the configuration values from the file
+	viper.SetConfigName("config") // name of the config file without extension
+	viper.SetConfigType("json")   // type of the config file
+	viper.AddConfigPath(".")      // path to look for the config file in
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Fatalln(err)
+	}
 
-	router.Run()
+	// Create an orm instance and connect to the database.
+	db := datastore.NewDB()
+	db.LogMode(true)
+	defer db.Close()
+
+	// Resolve dependendies between each layer.
+	r := registry.NewRegistry(db)
+
+	// Create controllers and routers to hanlde the requests.
+	e := echo.New()
+	e = router.NewRouter(e, r.NewAppController())
+
+	serverAddress := viper.GetString("server.address")
+
+	fmt.Println("Server listen at http://localhost:" + serverAddress)
+	if err := e.Start(":" + serverAddress); err != nil {
+		log.Fatalln(err)
+	}
 }
