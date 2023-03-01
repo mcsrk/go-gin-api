@@ -21,3 +21,11 @@
 go.work
 
 .env
+config.yaml
+
+.idea
+*.iml
+gin-bin
+vendor
+
+tmp
